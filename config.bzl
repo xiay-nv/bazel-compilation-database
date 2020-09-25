@@ -12,20 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-_compdb_config_repo_name = "bazel_compdb_config"
 _exec_root_config_name = "exec_root"
 _filter_flags_config_name = "filter_flags"
+compdb_config_repo_name = "bazel_compdb_config"
 
 config_exec_root = "@{repo}//:{target}".format(
-    repo=_compdb_config_repo_name,
+    repo=compdb_config_repo_name,
     target=_exec_root_config_name
 )
 
 config_filter_flags = "@{repo}//:{target}".format(
-    repo=_compdb_config_repo_name,
+    repo=compdb_config_repo_name,
     target=_filter_flags_config_name
 )
-
 
 _config_build_file_header = """
 package(default_visibility = ["//visibility:public"])
@@ -68,6 +67,23 @@ def _compdb_config_repository_impl(ctx):
         value = ctx.attr.filter_flags,
     )
 
+    for key, value in ctx.attr.extra_configs.items():
+        build_file_content += _config_string.format(
+            config_name = key,
+            value = value,
+        )
+
+    for key, value in ctx.attr.extra_shell_configs.items():
+        result = ctx.execute(['sh', '-c', value])
+        if result.return_code != 0:
+            fail("Failed to evaluate '%s':\n%s" % (value, result.stderr))
+
+        ret = result.stdout.rstrip("\n")
+        build_file_content += _config_string.format(
+            config_name = key,
+            value = ret,
+        )
+
     ctx.file("WORKSPACE.bazel", "workspace(name = \"{name}\")\n".format(name = ctx.name))
     ctx.file("BUILD.bazel", build_file_content)
 
@@ -79,15 +95,25 @@ compdb_config_repository = repository_rule(
     attrs = dict(
         workspace_name = attr.string(
             default = "__main__",
+            doc = 'Name of the root workspace',
         ),
         filter_flags = attr.string_list(
             default = [
                 "-isysroot __BAZEL_XCODE_SDKROOT__",
-            ]
+            ],
+            doc = 'Compilation flags to ignore',
+        ),
+        extra_configs = attr.string_dict(
+            doc = 'Extra configs to set in the repo.',
+        ),
+        extra_shell_configs = attr.string_dict(
+            doc = '''\
+Extra configs to set in the repo.
+Each item shall be a shell command whose stdout would be used as config value.''',
         ),
     ),
     doc = """A virtual repository for retriving absolute path of `execroot`."""
 )
 
 def config_clang_compdb(**kwargs):
-    compdb_config_repository(name = _compdb_config_repo_name, **kwargs)
+    compdb_config_repository(name = compdb_config_repo_name, **kwargs)

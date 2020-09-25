@@ -13,6 +13,18 @@
 # limitations under the License.
 
 load(":aspects.bzl", "compilation_database_aspect")
+load(":config.bzl", "compdb_config_repo_name")
+load(":custom_config.bzl", "CustomConfigProvider")
+
+_config_clang_tidy_exec = "@{repo}//:{target}".format(
+    repo=compdb_config_repo_name,
+    target="clang_tidy_exec",
+)
+
+_config_script_postfix = "@{repo}//:{target}".format(
+    repo=compdb_config_repo_name,
+    target="clang_tidy_script_postfix",
+)
 
 _clang_tidy_script = """\
 #!/bin/bash
@@ -22,7 +34,7 @@ cmd="ln -sf {compdb_file} compile_commands.json"
 echo $cmd
 eval $cmd
 
-cmd="clang-tidy {options} $@ {sources}"
+cmd="{clang_tidy} {options} $@ {sources}"
 echo $cmd
 eval $cmd
 """
@@ -36,11 +48,13 @@ def _clang_tidy_check_impl(ctx):
         if ctx.attr.mandatory:
             fail("`src` must be a target with at least one source or header.")
         else:
-            test_script = ctx.actions.declare_file(ctx.attr.name + ".sh")
+            script_postfix = ctx.attr._script_postfix[CustomConfigProvider].value
+            test_script = ctx.actions.declare_file(ctx.attr.name + script_postfix + ".sh")
             ctx.actions.write(output = test_script, content = "#noop", is_executable = True)
 
             return DefaultInfo(executable = test_script)
 
+    clang_tidy_exec = ctx.attr._clang_tidy_exec[CustomConfigProvider].value
 
     sources = " ".join([ src.short_path for src in src_files ])
     build_path = compdb_file.dirname.replace(compdb_file.root.path + "/", "")
@@ -48,6 +62,7 @@ def _clang_tidy_check_impl(ctx):
     content = _clang_tidy_script.format(
         compdb_file = compdb_file.short_path,
         build_path = build_path,
+        clang_tidy = clang_tidy_exec,
         sources = sources,
         options = options,
     )
@@ -84,7 +99,15 @@ clang_tidy_test = rule(
         ),
         "options": attr.string_list(
             doc = "options given to clang-tidy",
-        )
+        ),
+        "_script_postfix": attr.label(
+            doc = "Clang Tidy Executable",
+            default = Label(_config_script_postfix)
+        ),
+        "_clang_tidy_exec": attr.label(
+            doc = "Clang Tidy Executable",
+            default = Label(_config_clang_tidy_exec)
+        ),
     },
     test = True,
     implementation = _clang_tidy_check_impl,

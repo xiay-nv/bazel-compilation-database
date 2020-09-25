@@ -28,4 +28,11 @@ config_clang_compdb(
     filter_flags = [
         "-fno-canonical-system-headers",
     ],
+    extra_configs = dict(
+        clang_tidy_script_postfix = "_ctidy",
+    ),
+    extra_shell_configs = dict(
+        # Complicated expression to demostrate shell syntax support.
+        clang_tidy_exec = "eval echo $(which clang-tidy)",
+    ),
 )
